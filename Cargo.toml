@@ -5,4 +5,4 @@ members = ["mappers/*"]
 [workspace.dependencies]
 # Temporary dev
 zako3-tts-matching-sdk = { git = "https://github.com/mincomk/zako3", branch = "main" }
-
+regex = "1.12.3"
