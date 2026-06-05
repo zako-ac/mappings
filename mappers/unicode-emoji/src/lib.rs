@@ -1322,12 +1322,17 @@ static EMOJI_MAP: &[(&str, &str)] = &[
 ];
 
 pub fn process(input: Input) -> Output {
-    // Replace longer emoji sequences first so multi-codepoint sequences (e.g. ZWJ
-    // or variation-selector forms) are not clobbered by their shorter prefixes.
-    let mut entries: Vec<&(&str, &str)> = EMOJI_MAP.iter().collect();
-    entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+    // Sort once on first call; longer sequences must be replaced before shorter
+    // prefixes so multi-codepoint forms (ZWJ / variation-selector) are preserved.
+    static SORTED_EMOJI: std::sync::OnceLock<Vec<(&'static str, &'static str)>> =
+        std::sync::OnceLock::new();
+    let entries = SORTED_EMOJI.get_or_init(|| {
+        let mut entries = EMOJI_MAP.to_vec();
+        entries.sort_by(|a, b| b.0.len().cmp(&a.0.len()));
+        entries
+    });
 
-    let result = entries.iter().fold(input.text, |text, (emoji, reading)| {
+    let result = entries.iter().fold(input.text, |text, &(emoji, reading)| {
         if text.contains(emoji) {
             text.replace(emoji, reading)
         } else {
