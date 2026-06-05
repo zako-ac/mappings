@@ -1,0 +1,11 @@
+[package]
+name = "korean-counting"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+rustkorean = "1.1.2"
+zako3-tts-matching-sdk.workspace = true
