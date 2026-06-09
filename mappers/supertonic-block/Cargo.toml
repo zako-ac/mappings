@@ -1,0 +1,12 @@
+[package]
+name = "supertonic-block"
+version = "0.1.0"
+edition = "2024"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+regex.workspace = true
+unicode-normalization = "0.1.25"
+zako3-tts-matching-sdk.workspace = true
