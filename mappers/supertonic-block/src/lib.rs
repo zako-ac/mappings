@@ -3,50 +3,71 @@ use zako3_tts_matching_sdk::prelude::*;
 
 pub fn process(input: Input) -> Output {
     let normalized: String = input.text.nfc().collect();
-    let capped = cap_char_runs(&normalized);
 
-    let symbols = regex::Regex::new(r"[~^*_=<>{}\[\]\\|`]+").unwrap();
-    let no_symbols = symbols.replace_all(&capped, " ");
-
-    let collapsed = collapse_punct_runs(&no_symbols);
+    let removed = remove_known(&normalized);
+    let reduced = reduce_repeats(&removed);
 
     let whitespace = regex::Regex::new(r"\s+").unwrap();
-    let result = whitespace.replace_all(&collapsed, " ").trim().to_string();
+    let result = whitespace.replace_all(&reduced, " ").trim().to_string();
 
-    if !result.chars().any(char::is_alphanumeric) {
+    if result.chars().count() > 4 && !result.chars().any(char::is_alphanumeric) {
         return Output::text(String::new()).override_pipeline(vec![]);
     }
-    Output::text(result)
+    Output::text(result.replace("*", " "))
 }
 
-fn cap_char_runs(text: &str) -> String {
-    let chars: Vec<char> = text.chars().collect();
-    let mut out = String::with_capacity(text.len());
+fn remove_known(text: &str) -> String {
+    let known = regex::Regex::new(r"[\^_=<>{}\[\]\\|`]+").unwrap();
+    let without_known = known.replace_all(text, " ");
+    let clusters = regex::Regex::new(r#"[!~"']{2,}"#).unwrap();
+    clusters.replace_all(&without_known, " ").into_owned()
+}
+
+fn reduce_repeats(text: &str) -> String {
+    let mut current: Vec<char> = text.chars().collect();
+    loop {
+        let next = reduce_once(&current);
+        if next.len() == current.len() {
+            return next.into_iter().collect();
+        }
+        current = next;
+    }
+}
+
+fn reduce_once(chars: &[char]) -> Vec<char> {
+    let n = chars.len();
+    let mut out = Vec::with_capacity(n);
     let mut i = 0;
-    while i < chars.len() {
+    while i < n {
         let c = chars[i];
         let mut j = i;
-        while j < chars.len() && chars[j] == c {
+        while j < n && chars[j] == c {
             j += 1;
         }
-        let keep = if j - i >= 3 { 1 } else { j - i };
-        for _ in 0..keep {
+        if j - i >= 3 {
             out.push(c);
-        }
-        i = j;
-    }
-    out
-}
-
-fn collapse_punct_runs(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut prev: Option<char> = None;
-    for c in text.chars() {
-        if matches!(c, '!' | '?' | '.' | ',') && Some(c) == prev {
+            i = j;
             continue;
         }
-        out.push(c);
-        prev = Some(c);
+
+        if i + 1 < n {
+            let (a, b) = (chars[i], chars[i + 1]);
+            let mut k = i;
+            let mut count = 0;
+            while k + 1 < n && chars[k] == a && chars[k + 1] == b {
+                k += 2;
+                count += 1;
+            }
+            if count >= 3 {
+                out.push(a);
+                out.push(b);
+                i = k;
+                continue;
+            }
+        }
+
+        out.push(chars[i]);
+        i += 1;
     }
     out
 }
