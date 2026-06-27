@@ -10,8 +10,14 @@ pub fn process(input: Input) -> Output {
     let whitespace = regex::Regex::new(r"\s+").unwrap();
     let result = whitespace.replace_all(&reduced, " ").trim().to_string();
 
-    if result.chars().count() > 4 && !result.chars().any(char::is_alphanumeric) {
-        return Output::text(String::new()).override_pipeline(vec![]);
+    let is_garbage = result.is_empty()
+        || (result.chars().count() > 4 && !result.chars().any(char::is_alphanumeric));
+
+    if is_garbage && !normalized.trim().is_empty() {
+        // Return a space (not empty string): the host pipeline ignores empty
+        // text ("no change"), but a space gets accepted and downstream .trim()
+        // produces "" which causes the TTS to be skipped.
+        return Output::text(" ").override_pipeline(vec![]);
     }
     Output::text(result.replace("*", " "))
 }
@@ -73,3 +79,161 @@ fn reduce_once(chars: &[char]) -> Vec<char> {
 }
 
 export_mapper!(process);
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn make_input(text: &str) -> Input {
+        Input {
+            text: text.to_string(),
+            mapping_list: None,
+            caller_info: None,
+            mapper_list: None,
+            guild_id: None,
+            channel_id: None,
+        }
+    }
+
+    /// Helper: returns true if the output blocks TTS (whitespace-only text + pipeline override).
+    /// The mapper returns " " (space), which the host accepts; downstream .trim() → "" → TTS skipped.
+    fn is_blocked(output: &Output) -> bool {
+        output.text.trim().is_empty() && output.override_future_mappers == Some(vec![])
+    }
+
+    // ── Patterns that should be BLOCKED ──
+
+    #[test]
+    fn block_repeated_exclamations() {
+        let out = process(make_input("!!!!!!!!!!!!!!!!"));
+        assert!(is_blocked(&out), "should block: !!!!!!!!!!!!!!!!");
+    }
+
+    #[test]
+    fn block_exclamation_tilde_mixed() {
+        let out = process(make_input("!~!~!~!!~!~!~!"));
+        assert!(is_blocked(&out), "should block: !~!~!~!!~!~!~!");
+    }
+
+    #[test]
+    fn block_exclamation_tilde_alternating() {
+        let out = process(make_input("!~!~!~!~!"));
+        assert!(is_blocked(&out), "should block: !~!~!~!~!");
+    }
+
+    #[test]
+    fn block_short_exclamation_tilde() {
+        let out = process(make_input("!~!"));
+        assert!(is_blocked(&out), "should block: !~!");
+    }
+
+    #[test]
+    fn block_two_exclamations() {
+        let out = process(make_input("!!"));
+        assert!(is_blocked(&out), "should block: !!");
+    }
+
+    #[test]
+    fn block_three_exclamations() {
+        let out = process(make_input("!!!"));
+        assert!(is_blocked(&out), "should block: !!!");
+    }
+
+    #[test]
+    fn block_repeated_tildes() {
+        let out = process(make_input("~~~~"));
+        assert!(is_blocked(&out), "should block: ~~~~");
+    }
+
+    #[test]
+    fn block_exclamation_tilde_pair() {
+        let out = process(make_input("!~"));
+        assert!(is_blocked(&out), "should block: !~");
+    }
+
+    #[test]
+    fn block_quotes_cluster() {
+        let out = process(make_input("'''''''"));
+        assert!(is_blocked(&out), "should block: '''''''");
+    }
+
+    #[test]
+    fn block_exclamations_with_spaces() {
+        let out = process(make_input("!! !! !!"));
+        assert!(is_blocked(&out), "should block: !! !! !!");
+    }
+
+    // ── Patterns that should NOT be blocked ──
+
+    #[test]
+    fn pass_single_exclamation() {
+        let out = process(make_input("!"));
+        assert!(!is_blocked(&out), "single ! should not be blocked");
+        assert_eq!(out.text, "!");
+    }
+
+    #[test]
+    fn pass_normal_text_with_exclamations() {
+        let out = process(make_input("Hello!!!"));
+        assert!(!is_blocked(&out), "Hello!!! should not be blocked");
+        assert_eq!(out.text, "Hello");
+    }
+
+    #[test]
+    fn pass_korean_text() {
+        let out = process(make_input("안녕하세요"));
+        assert!(!is_blocked(&out), "Korean text should not be blocked");
+        assert_eq!(out.text, "안녕하세요");
+    }
+
+    #[test]
+    fn pass_korean_with_exclamations() {
+        let out = process(make_input("안녕!!!"));
+        assert!(!is_blocked(&out), "안녕!!! should not be blocked");
+        assert_eq!(out.text, "안녕");
+    }
+
+    #[test]
+    fn pass_mixed_text() {
+        let out = process(make_input("Hello! World!"));
+        assert!(!is_blocked(&out), "Hello! World! should not be blocked");
+        assert_eq!(out.text, "Hello! World!");
+    }
+
+    #[test]
+    fn pass_empty_string() {
+        let out = process(make_input(""));
+        assert!(!is_blocked(&out), "empty string should not be 'blocked'");
+        assert_eq!(out.text, "");
+    }
+
+    #[test]
+    fn pass_whitespace_only() {
+        let out = process(make_input("   "));
+        assert!(!is_blocked(&out), "whitespace-only should not be 'blocked'");
+        assert_eq!(out.text, "");
+    }
+
+    #[test]
+    fn pass_exclamations_around_text() {
+        let out = process(make_input("!!!Hello!!!"));
+        assert!(!is_blocked(&out), "!!!Hello!!! should not be blocked");
+        assert_eq!(out.text, "Hello");
+    }
+
+    // ── reduce_repeats tests ──
+
+    #[test]
+    fn reduce_repeated_chars() {
+        let out = process(make_input("wwwwwwhat"));
+        assert!(!is_blocked(&out));
+        assert_eq!(out.text, "what");
+    }
+
+    #[test]
+    fn reduce_alternating_pairs() {
+        let out = process(make_input("hahahahahaha"));
+        assert!(!is_blocked(&out));
+        assert_eq!(out.text, "ha");
+    }
+}
