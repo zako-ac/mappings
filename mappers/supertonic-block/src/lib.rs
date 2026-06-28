@@ -11,7 +11,8 @@ pub fn process(input: Input) -> Output {
     let result = whitespace.replace_all(&reduced, " ").trim().to_string();
 
     let is_garbage = result.is_empty()
-        || (result.chars().count() > 4 && !result.chars().any(char::is_alphanumeric));
+        || (result.chars().count() > 4 && !result.chars().any(char::is_alphanumeric))
+        || is_exclamation_noise(&removed);
 
     if is_garbage && !normalized.trim().is_empty() {
         // Return a space (not empty string): the host pipeline ignores empty
@@ -76,6 +77,36 @@ fn reduce_once(chars: &[char]) -> Vec<char> {
         i += 1;
     }
     out
+}
+
+/// Detect noise patterns like "아!ㅇ!아!ㅏ" where single exclamation marks are
+/// interspersed between very few unique alphanumeric characters — a common
+/// griefing/spam pattern that produces garbled TTS output.
+fn is_exclamation_noise(text: &str) -> bool {
+    let chars: Vec<char> = text.chars().collect();
+    let n = chars.len();
+
+    // Count interspersed '!' marks: alphanumeric ! alphanumeric
+    let mut interspersed = 0u32;
+    for i in 1..n.saturating_sub(1) {
+        if chars[i] == '!' && chars[i - 1].is_alphanumeric() && chars[i + 1].is_alphanumeric() {
+            interspersed += 1;
+        }
+    }
+
+    if interspersed < 3 {
+        return false;
+    }
+
+    // Count unique alphanumeric characters
+    let mut unique: Vec<char> = Vec::new();
+    for &c in &chars {
+        if c.is_alphanumeric() && !unique.contains(&c) {
+            unique.push(c);
+        }
+    }
+
+    unique.len() <= 3
 }
 
 export_mapper!(process);
@@ -219,6 +250,60 @@ mod tests {
         let out = process(make_input("!!!Hello!!!"));
         assert!(!is_blocked(&out), "!!!Hello!!! should not be blocked");
         assert_eq!(out.text, "Hello");
+    }
+
+    // ── Korean exclamation noise (should be BLOCKED) ──
+
+    #[test]
+    fn block_korean_excl_noise_short() {
+        let out = process(make_input("아!ㅇ!아!ㅏ"));
+        assert!(is_blocked(&out), "should block: 아!ㅇ!아!ㅏ");
+    }
+
+    #[test]
+    fn block_korean_excl_noise_long() {
+        let text = "아!ㅇ!아!!ㅏㅏㅇ!!아!아!ㅇ!아!!ㅏㅏㅇ!!아!아!ㅇ!아!!ㅏㅏㅇ!!아!아!ㅇ!아!!ㅏㅏㅇ!!아!아!ㅇ!아!!ㅏㅏㅇ!!아!아!ㅇ!아!!ㅏㅏㅇ!!아!아!ㅇ!아!!ㅏㅏㅇ!!아!";
+        let out = process(make_input(text));
+        assert!(
+            is_blocked(&out),
+            "should block: long Korean exclamation noise"
+        );
+    }
+
+    #[test]
+    fn block_korean_excl_noise_repeated_syllable() {
+        let out = process(make_input("와!와!와!와!"));
+        assert!(is_blocked(&out), "should block: 와!와!와!와!");
+    }
+
+    // ── Korean exclamation noise boundary (should NOT be blocked) ──
+
+    #[test]
+    fn pass_korean_single_exclamation() {
+        let out = process(make_input("안녕!"));
+        assert!(!is_blocked(&out), "안녕! should not be blocked");
+    }
+
+    #[test]
+    fn pass_korean_two_words_with_exclamations() {
+        let out = process(make_input("안녕! 반가워!"));
+        assert!(!is_blocked(&out), "안녕! 반가워! should not be blocked");
+    }
+
+    #[test]
+    fn pass_korean_many_unique_with_exclamations() {
+        // 5 unique syllables — above the ≤4 threshold
+        let out = process(make_input("진짜!대박!진짜!대박!"));
+        assert!(
+            !is_blocked(&out),
+            "진짜!대박!진짜!대박! should not be blocked"
+        );
+    }
+
+    #[test]
+    fn pass_english_exclamation_between_words() {
+        let out = process(make_input("Hello!World!Go!"));
+        assert!(!is_blocked(&out), "Hello!World!Go! should not be blocked");
     }
 
     // ── reduce_repeats tests ──
