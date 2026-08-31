@@ -2745,8 +2745,8 @@ Warnings: All cp values have U+FE0F characters removed. See /annotationsDerived/
 		<annotation cp="🎇" type="tts">불꽃</annotation>
 		<annotation cp="🧨" draft="contributed">다이너마이트 | 불꽃 | 불꽃놀이 | 빛 | 튀다 | 폭발적인 | 폭약 | 폭죽</annotation>
 		<annotation cp="🧨" type="tts">폭죽</annotation>
-		<annotation cp="✨" draft="contributed">마술 | 매직 | 반짝거림 | 반짝반짝 | 별 | 블링블링</annotation>
-		<annotation cp="✨" type="tts">블링블링</annotation>
+		<annotation cp="✨" draft="contributed">마술 | 매직 | 반짝거림 | 반짝반짝 | 별 | 블링블링 | 반짝</annotation>
+		<annotation cp="✨" type="tts">반짝</annotation>
 		<annotation cp="🎈" draft="contributed">기념 | 생일 | 축하 | 파티 | 풍선</annotation>
 		<annotation cp="🎈" type="tts">풍선</annotation>
 		<annotation cp="🎉" draft="contributed">생일 | 신나는 | 우후 | 짠 | 축하 | 파티</annotation>
